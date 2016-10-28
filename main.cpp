@@ -440,10 +440,22 @@ void My_SVD(const Eigen::Matrix2f& F,Eigen::Matrix2f& U,Eigen::Matrix2f& sigma,E
 	sigma.applyOnTheLeft(0, 1, J.transpose());
 	sigma.applyOnTheRight(0, 1, J);
 	//std::cout << sigma << std::endl;
-	//std::cout << sigma(0, 0) << std::endl;
+	/*if (sigma(0, 0) > sigma(1, 1)) {
+		std::cout << sigma(0, 0) - 25 << " " << sigma(1, 1) << std::endl;
+	} else {
+		std::cout << sigma(1, 1) - 25 << " " << sigma(0, 0) << std::endl;
+	}*/
 	// square root singular values
-	sigma(0, 0) = sqrt(abs(sigma(0, 0)));
-	sigma(1, 1) = sqrt(abs(sigma(1, 1)));
+	if (sigma(0, 0) > 0) { // check for floating point issues near 0
+		sigma(0, 0) = std::sqrt(sigma(0, 0));
+	} else {
+		sigma(0, 0) = 0;
+	}
+	if (sigma(1, 1) > 0) {
+		sigma(1, 1) = std::sqrt(sigma(1, 1));
+	} else {
+		sigma(1, 1) = 0;
+	}
 	sigma(0, 1) = 0;
 	sigma(1, 0) = 0;
 	//std::cout << sigma << std::endl;
@@ -451,9 +463,9 @@ void My_SVD(const Eigen::Matrix2f& F,Eigen::Matrix2f& U,Eigen::Matrix2f& sigma,E
 	
 	V << 1, 0, 0, 1;
 	V.applyOnTheLeft(0, 1, J);
-	std::cout << V << std::endl;
+	/*std::cout << V << std::endl;
 	std::cout << sigma << std::endl;
-	std::cout << V*sigma*sigma*V.transpose()<<std::endl;
+	std::cout << V*sigma*sigma*V.transpose()<<std::endl;*/
 	//std::cout << "Swapping" << std::endl;
 
 	// sort singular values and permute columns
@@ -491,18 +503,12 @@ void My_SVD(const Eigen::Matrix2f& F,Eigen::Matrix2f& U,Eigen::Matrix2f& sigma,E
 	sigma(1, 1) = sigma2;
 	// Fix signs at the end
 	
-	std::cout << "U det: " << U.determinant() << std::endl;
-	std::cout << "V det: " << V.determinant() << std::endl;
-	std::cout << "F det: " << F.determinant() << std::endl;
 	if (V.determinant() < 0) {
 		sigma(1, 1) = -sigma(1, 1);
 		Eigen::Matrix2f P2;
 		P2 << 1, 0, 0, -1; 
 		V *= P2;
 	}
-	std::cout << U*sigma*V.transpose() << std::endl;
-	std::cout << "U det: " << U.determinant() << std::endl;
-	std::cout << "V det: " << V.determinant() << std::endl;
 }
 
 void My_Polar(const Eigen::Matrix3f& F,Eigen::Matrix3f& R,Eigen::Matrix3f& S){
@@ -514,35 +520,51 @@ void My_Polar(const Eigen::Matrix3f& F,Eigen::Matrix3f& R,Eigen::Matrix3f& S){
 
 }
 
-// void Algorithm_2_Test(){
-//
-//   Eigen::Matrix2f F,C,U,V;
-//   F<<1,2,3,4;
-//   C=F*F.transpose();
-//   Eigen::Vector2f s2;
-//   JIXIE::Jacobi(C,s2,V);
-//
-// }
+void Algorithm_2_Test(int nTrials, float tol) {
+
+	Eigen::Matrix2f sigmai;
+	float sigma1 = 5; float sigma2 = 0;
+	sigmai << sigma1, 0, 0, sigma2;
+	srand(time(NULL));
+	for (int i = 0; i < nTrials; i++) {
+		Eigen::Matrix2f F, U, sigma, V;
+		Eigen::Matrix2f Ui, Vi;
+		double theta1 = (double)rand() / RAND_MAX * 2 * 3.1415926535897;
+		double theta2 = (double)rand() / RAND_MAX * 2 * 3.1415926535897;
+		Ui << cos(theta1), sin(theta1), -sin(theta1), cos(theta1);
+		Vi << cos(theta2), sin(theta2), -sin(theta2), cos(theta2);
+		F.noalias() = Ui * sigmai * Vi.transpose();
+		My_SVD(F, U, sigma, V);
+		Eigen::Matrix2f Fdiff;
+		Fdiff.noalias() = F - U * sigma * V.transpose();
+		if (std::abs(Fdiff(0, 0)) > tol || std::abs(Fdiff(1, 0)) > tol || std::abs(Fdiff(0, 1)) > tol || std::abs(Fdiff(1, 1)) > tol) {
+			std::cout << "Tolerance not met" << std::endl;
+			std::cout << Fdiff << std::endl;
+			std::cout << std::abs(sigma(0, 0) - sigma1) << " " << std::abs(sigma(1, 1) - sigma2) << std::endl;
+			std::cout << U << std::endl;
+			std::cout << V << std::endl;
+			std::cout << F << std::endl;
+			std::cout << U*sigma*V.transpose() << std::endl;
+			std::cout << sigma << std::endl;
+		}
+		if (U.determinant() < 0 || V.determinant() < 0) {
+			std::cout << "Determinants not properly signed" << std::endl;
+			std::cout << U << std::endl;
+			std::cout << V << std::endl;
+			std::cout << V.determinant() << std::endl;
+			std::cout << F << std::endl;
+			std::cout << F.determinant() << std::endl;
+			std::cout << U*sigma*V.transpose() << std::endl;
+			std::cout << sigma << std::endl;
+		}
+	}
+	std::cout << nTrials << " trials run." << std::endl;
+}
 
 int main()
 {
   bool run_benchmark = false;
   if (run_benchmark) runBenchmark();
-  Eigen::Matrix2f F, U, sigma, V;
-  Eigen::Matrix2f Ui, sigmai, Vi;
-  //F << 1, 2, 3, 4;
-  //F << 4, 3, 2, 1;
-  sigmai << 5, 0, 0, 0;
-  srand(time(NULL));
-  double theta1 = (double)rand() / RAND_MAX * 2 * 3.1415926535897;
-  double theta2 = (double)rand() / RAND_MAX * 2 * 3.1415926535897;
-  Ui << cos(theta1), sin(theta1), -sin(theta1), cos(theta1);
-  Vi << cos(theta2), sin(theta2), -sin(theta2), cos(theta2);
-  F.noalias() = Ui * sigmai * Vi.transpose();
-  std::cout << Ui << std::endl;
-  std::cout << F << std::endl;
-  std::cout << Vi << std::endl;
-  std::cout << "Begin" << std::endl;
-  My_SVD(F, U, sigma, V);
-  std::cout << sigma << std::endl;
+  Algorithm_2_Test(100,0.000001);
+  
 }
