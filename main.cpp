@@ -426,6 +426,83 @@ void My_SVD(const Eigen::Matrix2f& F,Eigen::Matrix2f& U,Eigen::Matrix2f& sigma,E
 //input: F
 //output: U,sigma,V with F=U*sigma*V.transpose() and U*U.transpose()=V*V.transpose()=I;
 
+	//bool swapped = false;
+	// C=F' F
+	Eigen::Matrix2f C;
+	C.noalias() = F.transpose()*F;
+	//std::cout << C << std::endl;
+	// Create Jacobi rotation
+	Eigen::JacobiRotation<float> J;
+	J.makeJacobi(C, 0, 1);
+	sigma.noalias() = C;
+	//std::cout << sigma << std::endl;
+
+	sigma.applyOnTheLeft(0, 1, J.transpose());
+	sigma.applyOnTheRight(0, 1, J);
+	//std::cout << sigma << std::endl;
+	//std::cout << sigma(0, 0) << std::endl;
+	// square root singular values
+	sigma(0, 0) = sqrt(abs(sigma(0, 0)));
+	sigma(1, 1) = sqrt(abs(sigma(1, 1)));
+	sigma(0, 1) = 0;
+	sigma(1, 0) = 0;
+	//std::cout << sigma << std::endl;
+	//std::cout << sigma(1, 1) << std::endl;
+	
+	V << 1, 0, 0, 1;
+	V.applyOnTheLeft(0, 1, J);
+	std::cout << V << std::endl;
+	std::cout << sigma << std::endl;
+	std::cout << V*sigma*sigma*V.transpose()<<std::endl;
+	//std::cout << "Swapping" << std::endl;
+
+	// sort singular values and permute columns
+	if (sigma(0, 0) < sigma(1, 1)) {
+		Eigen::Matrix2f P;
+		P << 0, 1, 1, 0;
+		// swap the sigmas
+		sigma = P*sigma*P;
+		// swap columns of J
+		V *= P;
+		//swapped = true;
+	}
+
+	//std::cout << V << std::endl;
+	//std::cout << sigma << std::endl;
+	//std::cout << V*sigma*sigma*V.transpose() << std::endl;
+
+	// A = F V
+	Eigen::Matrix2f A;
+	A.noalias() = F*V;
+	//std::cout << "A:" << A << std::endl;
+	// Givens(a11,a22,c,s)
+	Eigen::JacobiRotation<float> U2;
+	U2.makeGivens(A(0,0), A(1,0));
+	U << 1, 0, 0, 1;
+	U.applyOnTheLeft(0,1,U2);
+	//std::cout << U << std::endl;
+	//Eigen::Matrix2f R;
+	//R.noalias() = U.transpose() * A;
+	//std::cout << R << std::endl;
+	// U=[c,s;-s,c]
+	// sigma2 = a12*s + a22*c;
+	float sigma2 = A(0,1) * U(0,1) + A(1,1) * U(0,0);
+	//std::cout << sigma2 << std::endl;
+	sigma(1, 1) = sigma2;
+	// Fix signs at the end
+	
+	std::cout << "U det: " << U.determinant() << std::endl;
+	std::cout << "V det: " << V.determinant() << std::endl;
+	std::cout << "F det: " << F.determinant() << std::endl;
+	if (V.determinant() < 0) {
+		sigma(1, 1) = -sigma(1, 1);
+		Eigen::Matrix2f P2;
+		P2 << 1, 0, 0, -1; 
+		V *= P2;
+	}
+	std::cout << U*sigma*V.transpose() << std::endl;
+	std::cout << "U det: " << U.determinant() << std::endl;
+	std::cout << "V det: " << V.determinant() << std::endl;
 }
 
 void My_Polar(const Eigen::Matrix3f& F,Eigen::Matrix3f& R,Eigen::Matrix3f& S){
@@ -451,4 +528,21 @@ int main()
 {
   bool run_benchmark = false;
   if (run_benchmark) runBenchmark();
+  Eigen::Matrix2f F, U, sigma, V;
+  Eigen::Matrix2f Ui, sigmai, Vi;
+  //F << 1, 2, 3, 4;
+  //F << 4, 3, 2, 1;
+  sigmai << 5, 0, 0, 0;
+  srand(time(NULL));
+  double theta1 = (double)rand() / RAND_MAX * 2 * 3.1415926535897;
+  double theta2 = (double)rand() / RAND_MAX * 2 * 3.1415926535897;
+  Ui << cos(theta1), sin(theta1), -sin(theta1), cos(theta1);
+  Vi << cos(theta2), sin(theta2), -sin(theta2), cos(theta2);
+  F.noalias() = Ui * sigmai * Vi.transpose();
+  std::cout << Ui << std::endl;
+  std::cout << F << std::endl;
+  std::cout << Vi << std::endl;
+  std::cout << "Begin" << std::endl;
+  My_SVD(F, U, sigma, V);
+  std::cout << sigma << std::endl;
 }
