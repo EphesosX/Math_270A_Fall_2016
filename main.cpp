@@ -419,6 +419,46 @@ void runBenchmark()
     }
 }
 
+// Jacobi rotation from JIXIE for comparison
+void JIXIE_JacobiRotation(const Eigen::Matrix2f& S_Sym, Eigen::Matrix2f& sigma, float& cosine, float& sine) {
+	typedef float T;
+	T x = S_Sym(0, 0);
+	T y = S_Sym(0, 1);
+	T z = S_Sym(1, 1);
+	if (y == 0) {
+		// S is already diagonal
+		cosine = 1;
+		sine = 0;
+		sigma(0,0) = x;
+		sigma(1,1) = z;
+	} else {
+		T tau = 0.5 * (x - z);
+		T w = sqrt(tau * tau + y * y);
+		// w > y > 0
+		T t;
+		if (tau > 0) {
+			// tau + w > w > y > 0 ==> division is safe
+			t = y / (tau + w);
+		} else {
+			// tau - w < -w < -y < 0 ==> division is safe
+			t = y / (tau - w);
+		}
+		cosine = T(1) / sqrt(t * t + T(1));
+		sine = -t * cosine;
+		/*
+		V = [cosine -sine; sine cosine]
+		Sigma = V'SV. Only compute the diagonals for efficiency.
+		Also utilize symmetry of S and don't form V yet.
+		*/
+		T c2 = cosine * cosine;
+		T csy = 2 * cosine * sine * y;
+		T s2 = sine * sine;
+		sigma(0,0) = c2 * x - csy + s2 * z;
+		sigma(1,1) = s2 * x + csy + c2 * z;
+	}
+}
+
+
 void My_SVD(const Eigen::Matrix2f& F,Eigen::Matrix2f& U,Eigen::Matrix2f& sigma,Eigen::Matrix2f& V){
 //
 //Compute the SVD of input F with sign conventions discussed in class and in assignment
@@ -430,21 +470,30 @@ void My_SVD(const Eigen::Matrix2f& F,Eigen::Matrix2f& U,Eigen::Matrix2f& sigma,E
 	// C=F' F
 	Eigen::Matrix2f C;
 	C.noalias() = F.transpose()*F;
-	//std::cout << C << std::endl;
+	
 	// Create Jacobi rotation
-	Eigen::JacobiRotation<float> J;
+	
+	/*Eigen::JacobiRotation<float> J;
 	J.makeJacobi(C, 0, 1);
 	sigma.noalias() = C;
-	//std::cout << sigma << std::endl;
-
 	sigma.applyOnTheLeft(0, 1, J.transpose());
 	sigma.applyOnTheRight(0, 1, J);
-	//std::cout << sigma << std::endl;
+	V.noalias() = Eigen::Matrix2f::Identity();
+	V.applyOnTheLeft(0, 1, J);*/
+
+	
+
+	sigma.noalias() = Eigen::Matrix2f::Zero();
+	float cosine, sine;
+	JIXIE_JacobiRotation(C, sigma, cosine, sine);
+	V << cosine, sine, -sine, cosine;
+
 	/*if (sigma(0, 0) > sigma(1, 1)) {
 		std::cout << sigma(0, 0) - 25 << " " << sigma(1, 1) << std::endl;
 	} else {
 		std::cout << sigma(1, 1) - 25 << " " << sigma(0, 0) << std::endl;
 	}*/
+	
 	// square root singular values
 	if (sigma(0, 0) > 0) { // check for floating point issues near 0
 		sigma(0, 0) = std::sqrt(sigma(0, 0));
@@ -461,8 +510,7 @@ void My_SVD(const Eigen::Matrix2f& F,Eigen::Matrix2f& U,Eigen::Matrix2f& sigma,E
 	//std::cout << sigma << std::endl;
 	//std::cout << sigma(1, 1) << std::endl;
 	
-	V << 1, 0, 0, 1;
-	V.applyOnTheLeft(0, 1, J);
+	
 	/*std::cout << V << std::endl;
 	std::cout << sigma << std::endl;
 	std::cout << V*sigma*sigma*V.transpose()<<std::endl;*/
@@ -497,6 +545,7 @@ void My_SVD(const Eigen::Matrix2f& F,Eigen::Matrix2f& U,Eigen::Matrix2f& sigma,E
 	//R.noalias() = U.transpose() * A;
 	//std::cout << R << std::endl;
 	// U=[c,s;-s,c]
+	
 	// sigma2 = a12*s + a22*c;
 	float sigma2 = A(0,1) * U(0,1) + A(1,1) * U(0,0);
 	//std::cout << sigma2 << std::endl;
@@ -517,7 +566,49 @@ void My_Polar(const Eigen::Matrix3f& F,Eigen::Matrix3f& R,Eigen::Matrix3f& S){
   //
   //input: F
   //output: R,s with F=R*S and R*R.transpose()=I and S=S.transpose()
+	int max_it = 1000;
+	float tol = 0.0000001;
 
+	//R=I
+	R.noalias() = Eigen::Matrix3f::Identity();
+	//S=F
+	S.noalias() = F;
+	//it=0
+	int it = 0;
+	//while(it<max_it || max(abs(S_21-S_12), abs(S_31-S_13),abs(S_23-S_32))>tol) {
+	while (it < max_it && std::max(std::max(std::fabs(S(1, 0) - S(0, 1)), std::fabs(S(2, 0) - S(0, 2))), std::fabs(S(1, 2) - S(2, 1)))>tol) {
+		for (int i = 0; i <= 2; i++) {
+			for (int j = i+1; j <= 2; j++) {
+				//Givens(S_ii+S_jj,S_ji-S_ij,b_ij,c,s)
+				//std::cout << "i: " << i << " j: " << j << std::endl;
+				float trace = S(i, i) + S(j, j);
+				float sym_diff = S(j, i) - S(i, j);
+				//std::cout << trace << std::endl;
+				//std::cout << sym_diff << std::endl;
+				JIXIE::GivensRotation<float> G(trace, sym_diff, i, j);
+				Eigen::Matrix3f G2;
+				//G.fill(G2);
+				//std::cout << G2 << std::endl;
+				
+				//R=R G_ij
+				//R *= G(i, j);
+				G.columnRotation(R);
+				
+				//std::cout << R << std::endl;
+				
+				/*float denom = JIXIE::MATH_TOOLS::rsqrt(trace*trace + sym_diff*sym_diff);
+				S(i, j) = (S(i, i)*S(i, j) + S(j, j)*S(j, i))*denom;
+				S(j, i) = S(i, j);
+				S(i, i) = (S(i, i)*S(i, i) + S(i, i)*S(j, j) - S(i, j)*S(j, i) + S(j, i)*S(j, i))*denom;
+				S(j, j) = (S(j, j)*S(j, j) + S(j, j)*S(i, i) - S(i, j)*S(j, i) + S(i, j)*S(i, j))*denom;
+*/
+				G.rowRotation(S);
+				//std::cout << S << std::endl;
+				//std::cout << R*S << std::endl;
+			}
+		}
+		it++;
+	}
 }
 
 void Algorithm_2_Test(int nTrials, float tol) {
@@ -565,6 +656,14 @@ int main()
 {
   bool run_benchmark = false;
   if (run_benchmark) runBenchmark();
-  Algorithm_2_Test(100,0.000001);
-  
+  //Algorithm_2_Test(1000,0.000001);
+  Eigen::Matrix3f F, R, S;
+  F << 1, 2, 3, 4, 5, 6, 7, 8, 9;
+  My_Polar(F, R, S);
+  Eigen::Matrix3f F2;
+  F2 = R * S;
+  std::cout << F2 << std::endl;
+  std::cout << R << std::endl;
+  std::cout << S << std::endl;
+  std::cout << R*R.transpose() << std::endl;
 }
