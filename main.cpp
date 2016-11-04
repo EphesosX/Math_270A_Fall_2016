@@ -419,7 +419,7 @@ void runBenchmark()
     }
 }
 
-// Jacobi rotation from JIXIE for comparison
+// Jacobi rotation from JIXIE for comparison to Eigen
 void JIXIE_JacobiRotation(const Eigen::Matrix2f& S_Sym, Eigen::Matrix2f& sigma, float& cosine, float& sine) {
 	typedef float T;
 	T x = S_Sym(0, 0);
@@ -586,7 +586,7 @@ void My_Polar(const Eigen::Matrix3f& F,Eigen::Matrix3f& R,Eigen::Matrix3f& S){
 				//std::cout << trace << std::endl;
 				//std::cout << sym_diff << std::endl;
 				JIXIE::GivensRotation<float> G(trace, sym_diff, i, j);
-				Eigen::Matrix3f G2;
+				//Eigen::Matrix3f G2;
 				//G.fill(G2);
 				//std::cout << G2 << std::endl;
 				
